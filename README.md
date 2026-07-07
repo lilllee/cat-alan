@@ -21,6 +21,24 @@ recording, and offers two models from the sidebar:
 | Sentiment | 10 emotions | M5 on raw 44.1kHz waveforms (CatSound) | ~58% on 50 held-out samples |
 | Context | brushing / isolation / waiting-for-food | frozen AST embeddings + logistic regression (CatMeows) | ~59% on unseen cats (chance 33%) |
 
+## Using it from your phone
+
+The app is a plain web page, so any phone browser on the same network can
+reach it at `http://<pc-ip>:8501`. One caveat: mobile browsers only allow
+**microphone recording over HTTPS**, so over plain HTTP you record with a
+voice-memo app and upload the file instead.
+
+For in-browser recording (and access away from home), put the app behind an
+HTTPS endpoint — e.g. with [Tailscale](https://tailscale.com):
+
+```bash
+tailscale serve --bg 8501
+# -> https://<your-machine>.<your-tailnet>.ts.net, visible only to your devices
+```
+
+Then open that URL on your phone (with the Tailscale app connected) and add it
+to your home screen.
+
 ## Context model (why is the cat meowing?)
 
 Trained on [OpenFARM CatMeows](https://huggingface.co/datasets/oliveirabruno01/openfarm-catmeows)
