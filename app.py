@@ -1,24 +1,28 @@
+import subprocess
+
 import torch
-import mlflow
-import torchaudio
+import torch.nn as nn
+import soundfile as sf
 import numpy as np
 import streamlit as st
-import moviepy.editor as mp
 import matplotlib.pyplot as plt
 
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from imageio_ffmpeg import get_ffmpeg_exe
 
-@st.cache(suppress_st_warning=True)
-def load_model():
-    model_path = "examples/model"
-    model = mlflow.pytorch.load_model(model_path, map_location="cpu")
-    # Switch off dropout
-    model.eval()
-    return model
+from models.m5 import M5
+from models.ast_context import ASTContextClassifier
 
-classes = {
+SENTIMENT = "Sentiment (10 emotions)"
+CONTEXT = "Context (why is it meowing?)"
+
+# The sentiment M5 was trained on 44.1kHz audio loaded at its native rate, so
+# inputs must be resampled to match before inference.
+SENTIMENT_SAMPLE_RATE = 44100
+
+SENTIMENT_CLASSES = {
     0: "Happy",
     1: "Resting",
     2: "Angry",
@@ -31,78 +35,120 @@ classes = {
     9: "Mating",
 }
 
-emojis = {
-    0: "🐱 : Cat is happy.",
-    1: "💤 : Cat is tired.",
-    2: "😾 : Cat is angry.",
-    3: "😿 : Cat sounds like it's in pain.",
-    4: "🙀 : Cat is calling for mum.",
-    5: "⚠️ : Cat is giving you a warning." ,
-    6: "😼 : Cat wants to hunt.",
-    7: "⚔️ : Cat is about to throw hands.",
-    8: "🛡️  : Cat is on the defence.",
-    9: "😻 : Cat wants to mate.",
+SENTIMENT_EMOJIS = {
+    "Happy": "🐱 : Cat is happy.",
+    "Resting": "💤 : Cat is tired.",
+    "Angry": "😾 : Cat is angry.",
+    "Paining": "😿 : Cat sounds like it's in pain.",
+    "Mother Call": "🙀 : Cat is calling for mum.",
+    "Warning": "⚠️ : Cat is giving you a warning.",
+    "Hunting": "😼 : Cat wants to hunt.",
+    "Fighting": "⚔️ : Cat is about to throw hands.",
+    "Defence": "🛡️  : Cat is on the defence.",
+    "Mating": "😻 : Cat wants to mate.",
+}
+
+CONTEXT_EMOJIS = {
+    "Brushing": "🪮 : Cat is being brushed (mild annoyance).",
+    "Isolation": "🙀 : Cat is stressed / alone in an unfamiliar place.",
+    "Waiting for food": "🍚 : Cat wants food!",
 }
 
 
-def preprocess_audio(audio):
-    device = "cpu"
-    mono = torch.mean(audio, axis=0, keepdim=True)
-    reshaped = torch.unsqueeze(mono, 0)
-    return reshaped.to(device)
+@st.cache_resource
+def load_sentiment_model():
+    # The checkpoint is a full pickled M5 module; allowlist only the classes it
+    # needs so it loads under the safe weights-only unpickler.
+    torch.serialization.add_safe_globals([
+        M5, nn.Sequential, nn.Conv1d, nn.BatchNorm1d, nn.ReLU,
+        nn.MaxPool1d, nn.Dropout, nn.Linear, nn.LogSoftmax,
+    ])
+    model = torch.load(
+        "examples/model/data/model.pth", map_location="cpu", weights_only=True
+    )
+    model.eval()
+    return model
 
 
-def predict(model, audio):
-    log_softmax = model(audio)
-    probabilities = torch.squeeze(torch.exp(log_softmax))
-    return probabilities.cpu().detach().numpy()
+@st.cache_resource
+def load_context_model():
+    return ASTContextClassifier()
 
 
-model = load_model()
+def to_wav(input_path, output_path, sample_rate):
+    subprocess.run(
+        [
+            get_ffmpeg_exe(), "-y", "-i", str(input_path),
+            "-ac", "1", "-ar", str(sample_rate), str(output_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def read_mono(path):
+    data, sr = sf.read(path, dtype="float32", always_2d=True)
+    return data.mean(axis=1), sr
+
+
+def sentiment_probs(model, waveform):
+    audio = torch.from_numpy(waveform).reshape(1, 1, -1)
+    with torch.no_grad():
+        log_softmax = model(audio)
+    probs = torch.squeeze(torch.exp(log_softmax)).cpu().numpy()
+    return {SENTIMENT_CLASSES[i]: float(p) for i, p in enumerate(probs)}
+
+
+def render(scores, emojis, ylabel):
+    top = max(scores, key=scores.get)
+    left.subheader(emojis[top])
+    fig, ax = plt.subplots()
+    pairs = sorted(scores.items(), key=lambda kv: kv[1])
+    ax.barh([k for k, _ in pairs], [v for _, v in pairs])
+    ax.set_xlabel("Probability")
+    ax.set_ylabel(ylabel)
+    left.pyplot(fig)
+
 
 st.title("Meow Sentiment Analysis")
+model_choice = st.sidebar.selectbox("Model", [SENTIMENT, CONTEXT])
 st.sidebar.subheader("Provide Audio or Video file")
 uploaded_file = st.sidebar.file_uploader("File Path", type=["mp4", "mp3", "wav", "m4a"])
-st.sidebar.write("`cat-alan` is an audio-classification model based on the M5 architecture. Uploading audio information, the model attempts to predict the emotion of the cat when speaking.")
+recorded_audio = st.sidebar.audio_input("...or record a meow")
+if model_choice == SENTIMENT:
+    st.sidebar.write("10-emotion classifier (M5 on raw waveforms, CatSound dataset).")
+else:
+    st.sidebar.write("3-context classifier (AST embeddings + logistic head, CatMeows dataset). ~59% accuracy on unseen cats.")
 st.sidebar.write("**For optimal results try to keep the audio to just the meow.")
 
 left, right = st.columns([2, 1])
 
-if uploaded_file is not None:
-    raw_bytes = uploaded_file.read()
+source = uploaded_file if uploaded_file is not None else recorded_audio
 
-    extension = Path(uploaded_file.name).suffix
+if source is not None:
+    raw_bytes = source.read()
+    extension = Path(source.name).suffix if uploaded_file is not None else ".wav"
 
     with TemporaryDirectory() as temp_dir:
-        # Serialize to video with moviepy, extract audio and then save the audio file
+        input_path = Path(temp_dir, f"input{extension}")
+        with open(input_path, "wb") as f:
+            f.write(raw_bytes)
+
         if extension == ".mp4":
-            temp_video_path = Path(temp_dir, "temp_video.mp4")
-            with open(temp_video_path, "wb") as f:
-                f.write(raw_bytes)
-
-            video_object = mp.VideoFileClip(str(temp_video_path))
-            audio_data = video_object.audio
-            temp_audio_path = Path(temp_dir, "temp_audio.wav")
-            audio_data.write_audiofile(temp_audio_path)
-            video_widget = right.video(raw_bytes)
+            right.video(raw_bytes)
         else:
-            # Save the audio file so we can access the array data
-            temp_audio_path = Path(temp_dir, f"temp_audio{extension}")
-            with open(temp_audio_path, "wb") as f:
-                f.write(raw_bytes)
-            audio_widget = right.audio(raw_bytes)
-        audio, _ = torchaudio.load(temp_audio_path)
+            right.audio(raw_bytes)
 
-    model_input = preprocess_audio(audio)
-    probabilities = predict(model, model_input)
-
-    fig, ax = plt.subplots()
-    sorted_pairs = sorted(zip(classes.values(), probabilities), key=lambda x: x[1])
-    tuples = zip(*sorted_pairs)
-    class_axis, label_axis = [list(t) for t in tuples]
-    left.subheader(emojis[np.argmax(probabilities)])
-    ax.barh(class_axis, label_axis)
-    ax.set_xlabel("Probability")
-    ax.set_ylabel("Sentiment")
-    left.pyplot(fig)
-
+        if model_choice == SENTIMENT:
+            wav_path = Path(temp_dir, "audio.wav")
+            to_wav(input_path, wav_path, SENTIMENT_SAMPLE_RATE)
+            waveform, _ = read_mono(wav_path)
+            scores = sentiment_probs(load_sentiment_model(), waveform)
+            render(scores, SENTIMENT_EMOJIS, "Sentiment")
+        else:
+            # AST handles resampling internally; just decode to a wav it can read.
+            wav_path = Path(temp_dir, "audio.wav")
+            to_wav(input_path, wav_path, 16000)
+            waveform, sr = read_mono(wav_path)
+            scores = load_context_model().predict_proba(waveform, sr)
+            render(scores, CONTEXT_EMOJIS, "Context")

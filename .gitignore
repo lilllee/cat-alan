@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.omc/
+.claude/settings.local.json
+
+# Generated data + trained heads (regenerate via actions/ scripts)
+data/catmeows_context/
+data/ast_embeddings/
