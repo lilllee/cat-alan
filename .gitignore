@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .omc/
 .claude/settings.local.json
+CLAUDE.local.md
 
 # Generated data + trained heads (regenerate via actions/ scripts)
 data/catmeows_context/
