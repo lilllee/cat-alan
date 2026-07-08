@@ -40,8 +40,11 @@ Two independent models selectable from the app sidebar:
 
 - **Do not run `dvc pull`** — the upstream gdrive remote is private and returns
   401. The `.dvc` files are vestigial.
-- Dataset sources: CatSound → Zenodo record 4724180; CatMeows → HF
-  `oliveirabruno01/openfarm-catmeows` (fetched by `actions/prepare_catmeows.py`).
+- Dataset sources: CatSound → Zenodo record 4724180 (public page has a 2.5 MB
+  sample only; the full 12.2 GB lives behind the authors' Google Drive — the
+  same data the dead DVC remote pointed at); CatMeows → HF
+  `oliveirabruno01/openfarm-catmeows` (fetched by `actions/prepare_catmeows.py`),
+  with HF `zeddez/CatMeows` as a Parquet backup mirror if that one breaks.
 - `data/catmeows_context/` and `data/ast_embeddings/` are gitignored generated
   artifacts; regenerate them with the `actions/` scripts rather than looking
   for them in git history.
