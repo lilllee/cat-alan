@@ -11,6 +11,17 @@ Conventions:
 
 ---
 
+## 2026-07-07 — Context: MFCC + SVM baseline *(baseline, not shipped)*
+
+- **Data**: same CatMeows 3-class split (201 train / 75 test, unseen cats).
+- **Setup**: 20 MFCC + Δ + ΔΔ (60/frame) pooled over time with mean/std/min/max
+  → 240-d, RBF SVM (C=10, gamma=scale). Recipe from
+  Skyler-Luo/CatMeows-Recognition. Script: `actions/train_mfcc_svm.py`.
+- **Result**: **56.0% on unseen cats** — slightly below the deployed AST head
+  (58.67%). 5-fold CV inflated to 67.65% (the reference reports ~10-fold CV,
+  which mixes each cat across folds). Confirms frozen AST embeddings are a
+  marginally better feature than classic MFCC stats here; AST head stays.
+
 ## 2026-07-07 — Context: AST + prosody features *(tested, not shipped)*
 
 - **Data**: same CatMeows 3-class split (201 train / 75 test, unseen cats).
@@ -66,10 +77,8 @@ Ordered roughly by effort. Each should land as a dated entry above when run.
    (see entry above): no unseen-cat gain, not shipped.** Prosody shifts across
    individuals so it doesn't transfer to new cats; revisit for the single-cat
    model (item 3).
-2. **Add an MFCC + SVM baseline** (Skyler-Luo's recipe: 20 MFCC + Δ + ΔΔ, 4
-   stats = 240-d, RBF SVM). A cheap third point of comparison against the AST
-   head. Evaluate on the **unseen-cat split**, not the inflated 10-fold CV
-   those references report.
+2. ~~Add an MFCC + SVM baseline (Skyler-Luo's recipe).~~ **Done 2026-07-07
+   (see entry above): 56.0% on unseen cats, below the AST head — not shipped.**
 3. **Record my own cat per situation** (food / play / angry) and train a
    single-cat classifier. Motivation: meows encode little individual identity
    but are *highly variable* between cats (Russo et al. 2025: domestic meows

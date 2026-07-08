@@ -34,7 +34,8 @@ Two independent models selectable from the app sidebar:
 - `actions/` — offline pipeline scripts for the context model, run in order:
   `prepare_catmeows.py` → `extract_ast_embeddings.py` →
   `extract_prosody.py` (optional) → `train_ast_head.py`.
-  (`train_context.py` is an optional raw-waveform baseline, ~36%; `train.py`
+  (`train_mfcc_svm.py` is an optional MFCC+SVM baseline, ~56%, comparison only;
+  `train_context.py` is an optional raw-waveform baseline, ~36%; `train.py`
   is the original upstream M5 training script driven by `configs/config.json`.)
 - Prosodic features (`models/prosody.py`, librosa pyin) can be concatenated
   onto the AST embedding, but are **off by default** — the head bundle carries

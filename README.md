@@ -50,6 +50,7 @@ python actions/prepare_catmeows.py        # download + export wavs
 python actions/extract_ast_embeddings.py  # cache frozen AST features
 python actions/extract_prosody.py         # (optional) cache prosodic features
 python actions/train_ast_head.py          # train + evaluate the classifier head
+python actions/train_mfcc_svm.py          # (optional) MFCC+SVM baseline, ~56%
 python actions/train_context.py           # (optional) raw-waveform M5 baseline, ~36%
 ```
 
