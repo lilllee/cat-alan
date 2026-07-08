@@ -11,6 +11,24 @@ Conventions:
 
 ---
 
+## 2026-07-07 — Context: AST + prosody features *(tested, not shipped)*
+
+- **Data**: same CatMeows 3-class split (201 train / 75 test, unseen cats).
+- **Setup**: concat 3 prosodic features (duration, mean F0, intonation slope in
+  octaves/s) from `models/prosody.py` (librosa pyin) onto the 768-d AST
+  embedding → same regularized logistic head. Pipeline adds
+  `actions/extract_prosody.py`.
+- **Result**: **no change on unseen cats — 58.67% vs 58.67% AST-only.** 5-fold
+  CV nudged up (71.7% → 72.7%) but that's the inflated in-training metric.
+  Train-set class separation is real (brushing rises +0.19 oct/s; food is
+  shorter & higher F0), but the prosody distribution shifts across individuals
+  (brushing's slope flips sign train→test), so it doesn't transfer to new cats —
+  consistent with Russo et al. 2025 (meows highly variable between cats).
+- **Decision**: keep AST-only deployed (`use_prosody=False`); `train_ast_head.py`
+  ships prosody only if it strictly beats AST-only on the test set, so the app
+  avoids the pyin cost for zero gain. Prosody plumbing kept for the planned
+  single-cat model, where individual variation is removed and it may help.
+
 ## 2026-07-06 — Context: AST embeddings + logistic head *(shipped)*
 
 - **Data**: CatMeows via HF `oliveirabruno01/openfarm-catmeows` (Zenodo 4008297),
@@ -44,13 +62,10 @@ Conventions:
 
 Ordered roughly by effort. Each should land as a dated entry above when run.
 
-1. **Add explicit prosodic features to the Context model.** Concat mean F0,
-   duration, and an intonation-contour descriptor (rising / level / falling)
-   onto the AST embedding before the logistic head. Schötz et al. 2023
-   (70 cats, 969 meows) showed context significantly drives duration and
-   *mean* F0 — but **not F0 range** — and that contour is context-specific
-   (carrier=falling, cuddle/door=level, food/play/greeting=rise+fall combos).
-   So prefer mean F0 + duration + contour over F0-range features.
+1. ~~Add explicit prosodic features to the Context model.~~ **Done 2026-07-07
+   (see entry above): no unseen-cat gain, not shipped.** Prosody shifts across
+   individuals so it doesn't transfer to new cats; revisit for the single-cat
+   model (item 3).
 2. **Add an MFCC + SVM baseline** (Skyler-Luo's recipe: 20 MFCC + Δ + ΔΔ, 4
    stats = 240-d, RBF SVM). A cheap third point of comparison against the AST
    head. Evaluate on the **unseen-cat split**, not the inflated 10-fold CV

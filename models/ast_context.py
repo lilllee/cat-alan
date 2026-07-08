@@ -11,6 +11,8 @@ import joblib
 from scipy.signal import resample_poly
 from transformers import ASTModel, AutoFeatureExtractor
 
+from models.prosody import prosody_features
+
 MODEL_ID = "MIT/ast-finetuned-audioset-10-10-0.4593"
 AST_SAMPLE_RATE = 16000
 HEAD_PATH = Path(__file__).resolve().parent.parent / "models" / "context_ast_head.joblib"
@@ -31,6 +33,8 @@ class ASTContextClassifier:
         bundle = joblib.load(HEAD_PATH)
         self.head = bundle["classifier"]
         self.classes = bundle["classes"]
+        # Older heads predate prosody; default to off so inference dims match.
+        self.use_prosody = bundle.get("use_prosody", False)
 
     @torch.no_grad()
     def embed(self, waveform, sample_rate):
@@ -44,6 +48,8 @@ class ASTContextClassifier:
         return hidden.mean(dim=1).squeeze(0).numpy()
 
     def predict_proba(self, waveform, sample_rate):
-        emb = self.embed(waveform, sample_rate).reshape(1, -1)
-        probs = self.head.predict_proba(emb)[0]
+        emb = self.embed(waveform, sample_rate)
+        if self.use_prosody:
+            emb = np.concatenate([emb, prosody_features(waveform, sample_rate)])
+        probs = self.head.predict_proba(emb.reshape(1, -1))[0]
         return {PRETTY.get(c, c): float(p) for c, p in zip(self.classes, probs)}

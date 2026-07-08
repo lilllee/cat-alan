@@ -32,9 +32,16 @@ Two independent models selectable from the app sidebar:
 - Model loading is wrapped in `@st.cache_resource` — keep it that way, cold
   loads (especially AST) are slow.
 - `actions/` — offline pipeline scripts for the context model, run in order:
-  `prepare_catmeows.py` → `extract_ast_embeddings.py` → `train_ast_head.py`.
+  `prepare_catmeows.py` → `extract_ast_embeddings.py` →
+  `extract_prosody.py` (optional) → `train_ast_head.py`.
   (`train_context.py` is an optional raw-waveform baseline, ~36%; `train.py`
   is the original upstream M5 training script driven by `configs/config.json`.)
+- Prosodic features (`models/prosody.py`, librosa pyin) can be concatenated
+  onto the AST embedding, but are **off by default** — the head bundle carries
+  a `use_prosody` flag and `train_ast_head.py` only enables it if it beats
+  AST-only on the unseen-cat test set (it didn't; see `EXPERIMENTS.md`). The
+  app's inference wrapper honours that flag, so it skips pyin unless a future
+  head turns it on.
 
 ## Data
 

@@ -11,6 +11,7 @@ transformers
 scikit-learn
 scipy
 joblib
+librosa  # prosodic features (F0/duration) for models/prosody.py
 
 # Data prep (actions/prepare_catmeows.py)
 pandas
